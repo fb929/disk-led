@@ -38,9 +38,9 @@ go_get_sg_info(){
 	FAULT=$( cat "$FAULT_FILE" 2>/dev/null )
 }
 do_status(){
-	local VERBOSE=false		# если true - выводит дополнительные smartctl параметры дисков (работает дольше)
-	local EXTRA_VERBOSE=false	# если true - дополнительно выводит sas address дисков
-	local SHORT=false		# если true - короткий вывод статуса, нужен для auto_change_disk
+	local VERBOSE=false		# if true - also print smartctl details for each disk (slower)
+	local EXTRA_VERBOSE=false	# if true - additionally print the sas address of each disk
+	local SHORT=false		# if true - short status output, used by auto_change_disk
 	for ARG in $@; do
 		if [[ "$ARG" == "verbose" ]]; then
 			local VERBOSE=true
@@ -59,10 +59,9 @@ do_status(){
 	local FIRST=true
 	IFS=$'\n'
 	if $SHORT; then
-		# "короткий" вывод
+		# short output
 		for FILE in $FILES; do
 			go_get_sg_info $FILE
-			# "короткий" вывод
 			MSG="$MAIN_SG:$SLOT|$DEVICE_BLOCK|$LOCATE|$FAULT"
 			if $VERBOSE; then
 				LEGENDA='# main_sg:slot| device_block | locate | fault'
@@ -74,7 +73,7 @@ do_status(){
 			echo -e "$MSG"
 		done
 	else
-		# обычный вывод
+		# regular output
 		for FILE in $FILES; do
 			go_get_sg_info $FILE
 			if [[ $LOCATE -gt 0 ]]; then
@@ -169,14 +168,14 @@ do_led(){
 				fi
 				case $LED in
 					all)
-						echo echo 0 > "$LOCATE_FILE"
-						echo echo 0 > "$FAULT_FILE"
+						echo 0 > "$LOCATE_FILE"
+						echo 0 > "$FAULT_FILE"
 					;;
 					locate)
-						echo echo 0 > "$LOCATE_FILE"
+						echo 0 > "$LOCATE_FILE"
 					;;
 					fault)
-						echo echo 0 > "$FAULT_FILE"
+						echo 0 > "$FAULT_FILE"
 					;;
 				esac
 			fi
@@ -188,18 +187,25 @@ do_led(){
 	esac
 }
 
+# status options are collected first and do_status is called once after
+# parsing, so "status -v" prints only the verbose status (not status twice)
+STATUS_REQUESTED=false
+STATUS_ARGS=""
 if [[ -z $@ ]]; then
-	do_status
+	STATUS_REQUESTED=true
 fi
 for ARG in $@; do
 	if echo "$ARG" | grep -qP -- "^(statusShort|--statusShort)$"; then
-		do_status short
+		STATUS_REQUESTED=true
+		STATUS_ARGS="$STATUS_ARGS short"
 	elif echo "$ARG" | grep -qP -- "^(status|--status)$"; then
-		do_status
+		STATUS_REQUESTED=true
 	elif echo "$ARG" | grep -qP -- "^(-v|-verbose|--verbose|verbose)$"; then
-		do_status verbose
+		STATUS_REQUESTED=true
+		STATUS_ARGS="$STATUS_ARGS verbose"
 	elif echo "$ARG" | grep -qP -- "^(-vv|-extra_verbose|--extra_verbose|extra_verbose)$"; then
-		do_status extra_verbose
+		STATUS_REQUESTED=true
+		STATUS_ARGS="$STATUS_ARGS extra_verbose"
 	elif echo "$ARG" | grep -qP -- "^(help|--help|-h)$"; then
 		do_usage
 	elif echo "$ARG" | grep -qP -- "^(ident|-i|--ident|locate|--locate)$"; then
@@ -219,3 +225,7 @@ for ARG in $@; do
 		shift
 	fi
 done
+if $STATUS_REQUESTED; then
+	unset IFS	# do_led may have changed IFS, restore default word splitting for STATUS_ARGS
+	do_status $STATUS_ARGS
+fi
